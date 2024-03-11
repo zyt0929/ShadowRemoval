@@ -45,9 +45,7 @@ class ResBlock_fft_bench(nn.Module):
 
 
 class DoubleAtten(nn.Module):
-    """
-    A2-Nets: Double Attention Networks. NIPS 2018
-    """
+
     def __init__(self,in_c,reduction=4):
         super().__init__()
         self.reduction = reduction
@@ -56,12 +54,16 @@ class DoubleAtten(nn.Module):
         self.convA = nn.Conv2d(in_c,in_c//reduction,kernel_size=1)
         self.convB = nn.Conv2d(in_c,in_c//reduction,kernel_size=1)
         self.convV = nn.Conv2d(in_c,in_c//reduction,kernel_size=1)
-        self.conv1x1 = nn.Conv2d(in_c//reduction, in_c, kernel_size=1)
+        self.conv3 = nn.Conv2d(in_c//reduction, in_c, kernel_size=1)
+
+
+        self.conv2 = nn.Conv2d(in_c*2, in_c,1)
+        self.conv1 = nn.Conv2d(in_c*2, in_c,1)
 
     def forward(self,input,x2):
 
         feature_maps = self.convA(input)
-        atten_map = self.convB(input)
+        atten_map = self.convB(self.conv1(torch.cat([input,x2],dim=1)))
         b, _, h, w = feature_maps.shape
 
         feature_maps = feature_maps.view(b, 1, self.in_c//self.reduction, h*w) # 对 A 进行reshape
@@ -71,13 +73,13 @@ class DoubleAtten(nn.Module):
         # print((feature_maps * F.softmax(atten_map, dim=-1)).shape) # (b,c,c,hw)
         global_descriptors = torch.mean((feature_maps * F.softmax(atten_map, dim=-1)),dim=-1) # 特征图与attention_maps 相乘生成全局特征描述子
 
-        v = self.convV(x2)
+        v = self.convV(self.conv2(torch.cat([input,x2],dim=1)))
         atten_vectors = F.softmax(v.view(b, self.in_c//self.reduction, h*w), dim=-1) # 生成 attention_vectors
         # print((atten_vectors.permute(0,2,1)).shape) # (b,hw,c)
         # print(global_descriptors.shape) # (b,c,c)
         # print(torch.bmm(atten_vectors.permute(0, 2, 1), global_descriptors).shape) # (b,hw,c)
         out = torch.bmm(atten_vectors.permute(0,2,1), global_descriptors).permute(0,2,1).view(b, _, h, w)# 注意力向量左乘全局特征描述子
-        out = self.conv1x1(out)
+        out = self.conv3(out)
         return out
 
 
